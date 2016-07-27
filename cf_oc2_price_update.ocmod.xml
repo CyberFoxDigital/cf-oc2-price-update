@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<modification>
+	<code>1516051403011820151620091514161809030521160401200506180505</code>
+  <name>OpenCart 2 Option Price Update (free)</name>
+  <version>1.0</version>
+  <author>Cyber Fox</author>
+  <link>https://cyberfoxdigital.co.uk</link>
+	<file path="catalog/controller/product/product.php">
+		<operation>
+			<search><![CDATA[public function review() {]]></search>
+			<add position="before"><![CDATA[  public function getUpdatedPrice(){
+  
+    $product_query = $this->db->query("SELECT * FROM " . DB_PREFIX . "product_to_store p2s LEFT JOIN " . DB_PREFIX . "product p ON (p2s.product_id = p.product_id) LEFT JOIN " . DB_PREFIX . "product_description pd ON (p.product_id = pd.product_id) WHERE p2s.store_id = '" . (int)$this->config->get('config_store_id') . "' AND p2s.product_id = '" . (int)$_POST['product_id'] . "' AND pd.language_id = '" . (int)$this->config->get('config_language_id') . "' AND p.date_available <= NOW() AND p.status = '1'");
+
+    if ($product_query->num_rows) {
+      $option_price = 0;
+      $option_points = 0;
+      foreach ($_POST['option'] as $product_option_id => $value) {
+        $option_query = $this->db->query("SELECT po.product_option_id, po.option_id, od.name, o.type FROM " . DB_PREFIX . "product_option po LEFT JOIN `" . DB_PREFIX . "option` o ON (po.option_id = o.option_id) LEFT JOIN " . DB_PREFIX . "option_description od ON (o.option_id = od.option_id) WHERE po.product_option_id = '" . (int)$product_option_id . "' AND po.product_id = '" . (int)$_POST['product_id'] . "' AND od.language_id = '" . (int)$this->config->get('config_language_id') . "'");
+  
+        if ($option_query->num_rows) {
+          
+          if ($option_query->row['type'] == 'select' || $option_query->row['type'] == 'radio' || $option_query->row['type'] == 'image') {
+            $option_value_query = $this->db->query("SELECT pov.option_value_id, ovd.name, pov.quantity, pov.subtract, pov.price, pov.price_prefix, pov.points, pov.points_prefix FROM " . DB_PREFIX . "product_option_value pov LEFT JOIN " . DB_PREFIX . "option_value ov ON (pov.option_value_id = ov.option_value_id) LEFT JOIN " . DB_PREFIX . "option_value_description ovd ON (ov.option_value_id = ovd.option_value_id) WHERE pov.product_option_value_id = '" . (int)$value . "' AND pov.product_option_id = '" . (int)$product_option_id . "' AND ovd.language_id = '" . (int)$this->config->get('config_language_id') . "'");
+  
+            if ($option_value_query->num_rows) {
+              if ($option_value_query->row['price_prefix'] == '+') {
+                $option_price += $option_value_query->row['price'];
+              } elseif ($option_value_query->row['price_prefix'] == '-') {
+                $option_price -= $option_value_query->row['price'];
+              }
+  
+              if ($option_value_query->row['points_prefix'] == '+') {
+                $option_points += $option_value_query->row['points'];
+              } elseif ($option_value_query->row['points_prefix'] == '-') {
+                $option_points -= $option_value_query->row['points'];
+              }
+  
+            }
+          } elseif ($option_query->row['type'] == 'checkbox' && is_array($value)) {
+            foreach ($value as $product_option_value_id) {
+              $option_value_query = $this->db->query("SELECT pov.option_value_id, ovd.name, pov.quantity, pov.subtract, pov.price, pov.price_prefix, pov.points, pov.points_prefix, pov.weight, pov.weight_prefix FROM " . DB_PREFIX . "product_option_value pov LEFT JOIN " . DB_PREFIX . "option_value ov ON (pov.option_value_id = ov.option_value_id) LEFT JOIN " . DB_PREFIX . "option_value_description ovd ON (ov.option_value_id = ovd.option_value_id) WHERE pov.product_option_value_id = '" . (int)$product_option_value_id . "' AND pov.product_option_id = '" . (int)$product_option_id . "' AND ovd.language_id = '" . (int)$this->config->get('config_language_id') . "'");
+  
+              if ($option_value_query->num_rows) {
+                if ($option_value_query->row['price_prefix'] == '+') {
+                  $option_price += $option_value_query->row['price'];
+                } elseif ($option_value_query->row['price_prefix'] == '-') {
+                  $option_price -= $option_value_query->row['price'];
+                }
+  
+                if ($option_value_query->row['points_prefix'] == '+') {
+                  $option_points += $option_value_query->row['points'];
+                } elseif ($option_value_query->row['points_prefix'] == '-') {
+                  $option_points -= $option_value_query->row['points'];
+                }
+                
+              }
+            }
+          } 
+        }
+      }
+  
+      $price = $product_query->row['price'] + $option_price;
+      $return['price'] = $this->currency->format($this->tax->calculate($price, $product_query->row['tax_class_id'], $this->config->get('config_tax')), $this->session->data['currency']);
+      
+      $return['priceTax'] = $this->currency->format($price, $this->session->data['currency']);
+      
+      // Product Specials
+      $product_special_query = $this->db->query("SELECT price FROM " . DB_PREFIX . "product_special WHERE product_id = '" . (int)$_POST['product_id'] . "' AND customer_group_id = '" . (int)$this->config->get('config_customer_group_id') . "' AND ((date_start = '0000-00-00' OR date_start < NOW()) AND (date_end = '0000-00-00' OR date_end > NOW())) ORDER BY priority ASC, price ASC LIMIT 1");
+  
+      if ($product_special_query->num_rows) {
+        $return['priceSpecial'] =  $this->currency->format($this->tax->calculate($product_special_query->row['price'], $product_query->row['tax_class_id'], $this->config->get('config_tax')), $this->session->data['currency']);
+      } else {
+        $return['priceSpecial'] = $return['price'];
+      }
+      
+      header('Content-Type: application/json');
+      echo json_encode($return);
+          
+      return TRUE;
+      exit;
+      
+    }
+  }
+
+]]></add>
+		</operation>
+	</file>
+	<file path="catalog/view/theme/default/template/product/product.tpl">
+    <operation>
+      <search><![CDATA[<?php echo $footer; ?>]]></search>
+      <add position="before"><![CDATA[
+<script type="text/javascript">
+  $('#product input, #product select, #product textarea').on('change', function(){
+    console.log($("#product").serialize());
+    $.ajax({
+      url: 'index.php?route=product/product/getUpdatedPrice',
+      type: 'post',
+      dataType: 'json',
+      data: $('#product input[type=\'text\'], #product input[type=\'hidden\'], #product input[type=\'radio\']:checked, #product input[type=\'checkbox\']:checked, #product select, #product textarea'),
+      beforeSend: function() {},
+      complete: function() {},
+      success: function(json) {
+        console.log(json);
+        $('.price-wrapper').html(json.price);
+        $('.price-special-wrapper').html(json.priceSpecial);
+        $('.price-tax-wrapper').html(json.priceTax);
+      }
+    });
+  });
+</script>
+]]></add>
+    </operation>
+    <operation>
+      <search><![CDATA[<?php echo $price; ?>]]></search>
+      <add position="replace"><![CDATA[<span class="price-wrapper"><?php echo $price; ?></span>]]></add>
+    </operation>
+    <operation>
+      <search><![CDATA[<?php echo $special; ?>]]></search>
+      <add position="replace"><![CDATA[<span class="price-special-wrapper"><?php echo $special; ?></span>]]></add>
+    </operation>
+    <operation>
+      <search><![CDATA[<?php echo $tax; ?>]]></search>
+      <add position="replace"><![CDATA[<span class="price-tax-wrapper"><?php echo $tax; ?></span>]]></add>
+    </operation>
+	</file>
+</modification>
