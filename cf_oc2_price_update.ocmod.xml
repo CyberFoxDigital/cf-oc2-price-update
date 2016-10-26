@@ -86,7 +86,7 @@
 ]]></add>
 		</operation>
 	</file>
-	<file path="catalog/view/theme/default/template/product/product.tpl">
+	<file path="catalog/view/theme/*/template/product/product.tpl">
     <operation>
       <search><![CDATA[<?php echo $footer; ?>]]></search>
       <add position="before"><![CDATA[
